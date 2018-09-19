@@ -181,7 +181,7 @@ __global__ void kernel(int i, float *image_data, int *point_count, float *trans_
     }
 }
 
-__global__ void calc_func(int i, float *image_data, int *point_count, float *trans_sdata, int parallel_emit_sum)
+__global__ void calc_func(int global_i, float *image_data, int *point_count, float *trans_sdata, int parallel_emit_sum)
 {
     int c = 1520;
     float fs = 25e6;
@@ -195,11 +195,11 @@ __global__ void calc_func(int i, float *image_data, int *point_count, float *tra
     int middot = -160; //发射前1us开始接收，也就是约为12.5个点之后发射,数据显示约16个点
                        //const int ELE_NO=1024;
 
-    int k_line = blockIdx.y;                       //线
-    int nn = blockIdx.x;                           //点
-                                                   //blockIdx.x+blockIdx.y * gridDimx.x
-    int y = threadIdx.x;                           //接收阵元
-    int j = i - M + y;                             //接收阵元
+    int k_line = blockIdx.y; //线
+    int nn = blockIdx.x;     //点
+                             //blockIdx.x+blockIdx.y * gridDimx.x
+    int y = threadIdx.x;     //接收阵元
+    // int j = i - M + y;                             //接收阵元
     int bid = blockIdx.x + blockIdx.y * gridDim.x; //线程块的索引
     // int tid = blockDim.x * bid + threadIkdx.x;      //线程的索引
 
@@ -221,7 +221,7 @@ __global__ void calc_func(int i, float *image_data, int *point_count, float *tra
         //  int j=y*ELE_NO/M+jj;
         for (int jj = 0; jj < parallel_emit_sum; jj++)
         {
-            i = i + jj;
+            int i = global_i + jj;
             int j = i - M + y; //接收阵元
             j = (j + ELE_NO) % ELE_NO;
 
@@ -508,7 +508,8 @@ int main(int argc, char const *argv[])
     else
     {
         std::cout << "ERROR :: Read bin file error." << std::endl;
-        exit(-1);
+        file_read.close();
+        // exit(-1);
     }
     over_read = time(NULL);
     cout << "Reading time is : " << difftime(over_read, start_read) << "s!" << endl;
