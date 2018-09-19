@@ -83,193 +83,112 @@ __global__ void filter_func(float *filtered_data, short *data_in_process)
     }
 }
 
-// 原始代码，被 calc_func 取代，但保留以备用
-__global__ void kernel(int i, float *image_data, int *point_count, float *trans_sdata, int parallel_emit_sum)
-{
-    int c = 1520;
-    float fs = 25e6;
-    float image_width = 200.0 / 1000;
-    float image_length = 200.0 / 1000;
-    float data_diameter = 220.0 / 1000;
-    int point_length = data_diameter / c * fs + 0.5;
-
-    const int no_lines = N;
-    const int no_point = N;
-
-    float d_x = image_width / (no_lines - 1);
-    float d_z = image_length / (no_point - 1);
-
-    int middot = -160; //发射前1us开始接收，也就是约为12.5个点之后发射,数据显示约16个点
-                       //const int ELE_NO=1024;
-
-    int k_line = blockIdx.y;                       //线
-    int nn = blockIdx.x;                           //点
-                                                   //blockIdx.x+blockIdx.y * gridDimx.x
-    int y = threadIdx.x;                           //接收阵元
-    int j = i - M + y;                             //接收阵元
-    int bid = blockIdx.x + blockIdx.y * gridDim.x; //线程块的索引
-    // int tid = blockDim.x * bid + threadIkdx.x;      //线程的索引
-
-    __shared__ float cache_image[2 * M];
-    __shared__ int cache_point[2 * M];
-    /*__shared__ float cache_image2[512];*/
-    int cacheIndex = threadIdx.x;
-
-    if (k_line < N && nn < N && y < 2 * M)
-    {
-        float u = 0;
-        int point_count_1 = 0;
-        float z1 = -image_length / 2 + d_z * nn;
-        float x = -image_length / 2 + d_x * k_line;
-        float xg = 0.0014;
-
-        // for(int jj=1;jj<=ELE_NO/M;jj++)
-        // {
-        //  int j=y*ELE_NO/M+jj;
-        for (int jj = 0; jj < parallel_emit_sum; jj++)
-        {
-            i = i + jj;
-            int j = i - M + y; //接收阵元
-            j = (j + ELE_NO) % ELE_NO;
-
-            float disi = sqrtf((dev_ele_coord_x[i] - x) * (dev_ele_coord_x[i] - x) + (z1 - dev_ele_coord_y[i]) * (z1 - dev_ele_coord_y[i]));
-            float disj = sqrtf((dev_ele_coord_x[j] - x) * (dev_ele_coord_x[j] - x) + (z1 - dev_ele_coord_y[j]) * (z1 - dev_ele_coord_y[j]));
-            float ilength = 112.0 / 1000;
-            float imagelength = sqrtf(x * x + z1 * z1);
-            float angle = acosf((ilength * ilength + disi * disi - imagelength * imagelength) / 2 / ilength / disi);
-            if ((disi >= 0.1 * 2 / 3 && (abs(i - j) < 256 || abs(i - j) > 2048 - 256)) || (disi >= 0.1 * 1 / 3 && (abs(i - j) < 200 || abs(i - j) > 2048 - 200)) || (disi >= 0 && (abs(i - j) < 100 || abs(i - j) > 2048 - 100)))
-            {
-                int num = (disi + disj) / c * fs + 0.5;
-
-                if (((num + middot + (OD - 1 - 1) / 2) > 100) && ((num + middot + (OD - 1 - 1) / 2) <= point_length) && (angle < PI / 9))
-                {
-                    u += trans_sdata[(num + middot + (OD - 1 - 1) / 2) * ELE_NO + j] * expf(xg * (num - 1));
-
-                    point_count_1 += 1;
-                }
-            }
-        }
-        cache_image[cacheIndex] = u;
-        cache_point[cacheIndex] = point_count_1;
-
-        __syncthreads();
-
-        /*int jj=1;
-		while((cacheIndex + jj)< blockDim.x){
-		cache_image2[cacheIndex]+=cache_image[cacheIndex]*cache_image[cacheIndex + jj];
-		 __syncthreads();
-                 jj= jj+1;
-		}*/
-
-        int i = blockDim.x / 2;
-        while (i != 0)
-        {
-            if (cacheIndex < i)
-            {
-                cache_image[cacheIndex] += cache_image[cacheIndex + i];
-                cache_point[cacheIndex] += cache_point[cacheIndex + i];
-            }
-            __syncthreads();
-            i /= 2;
-        }
-
-        if (cacheIndex == 0)
-        {
-            image_data[bid] = cache_image[0];
-            point_count[bid] = cache_point[0];
-        }
-    }
+inline __device__ float distance(float x1, float y1, float x2, float y2) {
+    auto dx = x1 - x2;
+    auto dy = y1 - y2;
+    return sqrtf(dx * dx + dy * dy);
 }
 
-__global__ void calc_func(int global_i, float *image_data, int *point_count, float *trans_sdata, int parallel_emit_sum)
-{
-    int c = 1520;
+bool __device__ __host__ is_close(int delta, int range) {
+    int abs_delta = abs(delta);
+    return (abs_delta < range || range > 2048 - range);
+    // return (delta + range + 2047) % 2048 < 2 * range - 1;
+}
+
+__global__ void calc_func(const int global_step, float *image_data,
+                          int *point_count, const float *trans_sdata,
+                          const int parallel_emit_sum) {
+    int sound_speed = 1520;
     float fs = 25e6;
     float image_width = 200.0 / 1000;
     float image_length = 200.0 / 1000;
     float data_diameter = 220.0 / 1000;
-    int point_length = data_diameter / c * fs + 0.5;
+    // 3618
+    int point_length = data_diameter / sound_speed * fs + 0.5;
     float d_x = image_width / (N - 1);
     float d_z = image_length / (N - 1);
+    // magic code...
+    int middot =
+        -160;    //发射前1us开始接收，也就是约为12.5个点之后发射,数据显示约16个点
 
-    int middot = -160; //发射前1us开始接收，也就是约为12.5个点之后发射,数据显示约16个点
-                       //const int ELE_NO=1024;
-
-    int k_line = blockIdx.y; //线
-    int nn = blockIdx.x;     //点
-                             //blockIdx.x+blockIdx.y * gridDimx.x
-    int y = threadIdx.x;     //接收阵元
-    // int j = i - M + y;                             //接收阵元
-    int bid = blockIdx.x + blockIdx.y * gridDim.x; //线程块的索引
-    // int tid = blockDim.x * bid + threadIkdx.x;      //线程的索引
+    int image_x_id = blockIdx.y;    //线
+    int image_z_id = blockIdx.x;    //点
+    int image_z_dim = gridDim.x;
+    int recv_center_id = threadIdx.x;    //center of 接收阵元
 
     __shared__ float cache_image[2 * M];
     __shared__ int cache_point[2 * M];
-    /*__shared__ float cache_image2[512];*/
     int cacheIndex = threadIdx.x;
 
-    if (k_line < N && nn < N && y < 2 * M)
-    {
-        float u = 0;
-        int point_count_1 = 0;
-        float z1 = -image_length / 2 + d_z * nn;
-        float x = -image_length / 2 + d_x * k_line;
+    if (image_x_id < N && image_z_id < N && recv_center_id < 2 * M) {
+        float sum_image = 0;
+        int sum_point = 0;
+        float value_z = -image_length / 2 + d_z * image_z_id;
+        float value_x = -image_length / 2 + d_x * image_x_id;
+        // what the hell is this !!! need more comments!!!
         float xg = 0.0014;
 
-        // for(int jj=1;jj<=ELE_NO/M;jj++)
-        // {
-        //  int j=y*ELE_NO/M+jj;
-        for (int jj = 0; jj < parallel_emit_sum; jj++)
-        {
-            int i = global_i + jj;
-            int j = i - M + y; //接收阵元
-            j = (j + ELE_NO) % ELE_NO;
+        for (int step_offset = 0; step_offset < parallel_emit_sum;
+             step_offset++) {
+            int step = global_step + step_offset;
+            int send_id = step;                            // as send_id
+            int recv_id = send_id - M + recv_center_id;    //接收阵元
+            recv_id = (recv_id + ELE_NO) % ELE_NO;
 
-            float disi = sqrtf((dev_ele_coord_x[i] - x) * (dev_ele_coord_x[i] - x) + (z1 - dev_ele_coord_y[i]) * (z1 - dev_ele_coord_y[i]));
-            float disj = sqrtf((dev_ele_coord_x[j] - x) * (dev_ele_coord_x[j] - x) + (z1 - dev_ele_coord_y[j]) * (z1 - dev_ele_coord_y[j]));
+            float disi = distance(dev_ele_coord_x[send_id],
+                                  dev_ele_coord_y[send_id], value_x, value_z);
+            float disj = distance(dev_ele_coord_x[recv_id],
+                                  dev_ele_coord_y[recv_id], value_x, value_z);
+            // what the hell is this !!! need more comments!!!
+            // i guess it is a radius?
             float ilength = 112.0 / 1000;
-            float imagelength = sqrtf(x * x + z1 * z1);
-            float angle = acosf((ilength * ilength + disi * disi - imagelength * imagelength) / 2 / ilength / disi);
-            if ((disi >= 0.1 * 2 / 3 && (abs(i - j) < 256 || abs(i - j) > 2048 - 256)) || (disi >= 0.1 * 1 / 3 && (abs(i - j) < 200 || abs(i - j) > 2048 - 200)) || (disi >= 0 && (abs(i - j) < 100 || abs(i - j) > 2048 - 100)))
-            {
-                int num = (disi + disj) / c * fs + 0.5;
+            float imagelength = sqrtf(value_x * value_x + value_z * value_z);
+            // 2 * R * disi * cosTheta = R^2 + disi^2 - |(x, z)|^2
+            float angle = acosf(
+                (ilength * ilength + disi * disi - imagelength * imagelength) /
+                2 / ilength / disi);
 
-                if (((num + middot + (OD - 1 - 1) / 2) > 100) && ((num + middot + (OD - 1 - 1) / 2) <= point_length) && (angle < PI / 9))
-                {
-                    u += trans_sdata[(num + middot + (OD - 1 - 1) / 2) * ELE_NO + j + jj * ELE_NO * NSAMPLE] * expf(xg * (num - 1));
+            // put disi constraint onto for;
+            // and since
+            auto diff = send_id - recv_id;
+            bool is_valid = (disi >= 0.1 * 2 / 3 && is_close(diff, 256)) ||
+                            (disi >= 0.1 * 1 / 3 && is_close(diff, 200)) ||
+                            (disi >= 0.1 * 0 / 3 && is_close(diff, 100));
+            if (is_valid) {
+                int num = (disi + disj) / sound_speed * fs + 0.5;
 
-                    point_count_1 += 1;
+                if (((num + middot + (OD - 1 - 1) / 2) > 100) &&
+                    ((num + middot + (OD - 1 - 1) / 2) <= point_length) &&
+                    (angle < PI / 9)) {
+                    sum_image +=
+                        trans_sdata[(num + middot + (OD - 1 - 1) / 2) * ELE_NO +
+                                    recv_id + step_offset * ELE_NO * NSAMPLE] *
+                        expf(xg * (num - 1));
+
+                    sum_point += 1;
                 }
             }
         }
-        cache_image[cacheIndex] = u;
-        cache_point[cacheIndex] = point_count_1;
+        cache_image[cacheIndex] = sum_image;
+        cache_point[cacheIndex] = sum_point;
 
         __syncthreads();
-
-        /*int jj=1;
-		while((cacheIndex + jj)< blockDim.x){
-		cache_image2[cacheIndex]+=cache_image[cacheIndex]*cache_image[cacheIndex + jj];
-		 __syncthreads();
-                 jj= jj+1;
-		}*/
-
-        int i = blockDim.x / 2;
-        while (i != 0)
-        {
-            if (cacheIndex < i)
-            {
-                cache_image[cacheIndex] += cache_image[cacheIndex + i];
-                cache_point[cacheIndex] += cache_point[cacheIndex + i];
+        // sum up cache_image and cacheIndex, and i have way to make this part disappear
+        int step = blockDim.x / 2;
+        while (step != 0) {
+            if (cacheIndex < step) {
+                cache_image[cacheIndex] += cache_image[cacheIndex + step];
+                cache_point[cacheIndex] += cache_point[cacheIndex + step];
             }
             __syncthreads();
-            i /= 2;
+            step /= 2;
         }
 
-        if (cacheIndex == 0)
-        {
-            image_data[bid] = cache_image[0];
-            point_count[bid] = cache_point[0];
+        if (cacheIndex == 0) {
+            int pixel_index =
+                image_z_id + image_x_id * image_z_dim;    //线程块的索引
+            image_data[pixel_index] = cache_image[0];
+            point_count[pixel_index] = cache_point[0];
         }
     }
 }
