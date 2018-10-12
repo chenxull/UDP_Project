@@ -104,6 +104,12 @@ UDP_Rcv::UDP_Rcv(Config *cfg) {
     usleep(40000);
     std::cout << "INFO :: Ready done." << std::endl;
     // TODO 开始监听，告诉 Daemon 程序，可以开始发包
+    // TODO 一秒钟之后，开始查找 ip_count 个计数器中的最小值。以 table 为单位开始处理
+    // TODO inline private get_min_packets_cnt() 获取最小值 -> min_packets_cnt
+    // TODO 最小值的上一轮计数器，last_packets_cnt
+    // TODO 需要处理的 table 数量 (min_packets_cnt - last_packets_cnt)/300，每根网线300个包，32根网线正好构成一张 table
+    // TODO 多线程处理 (min_packets_cnt - last_packets_cnt)/300 个 tables 的解码和放置
+    //  TODO 单独一个线程用来保存解码后的数据字段
     while (true) {
         sleep(1);
 
