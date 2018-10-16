@@ -24,31 +24,47 @@ using namespace std;
 
 using boost::asio::ip::tcp;
 
+
+
+
 //创建一个指针类型的类
 class Connection: public boost::enable_shared_from_this<Connection> {
 private:
     tcp::socket sock;
-    char buf[512];
+    enum {
+        BUF_SIZE = 1410
+    };
+    char buf[BUF_SIZE];
+    string msg_;
+    char *msg_buff = (char *)malloc(1400 * sizeof(char));
 public:
     Connection(boost::asio::io_service& service): sock(service){
     }
 
      void start() {
-        boost::asio::async_read(sock, boost::asio::buffer(buf),
+        memset(msg_buff, 0, BUF_SIZE);
+        boost::asio::async_read(sock, boost::asio::buffer(msg_buff,BUF_SIZE),
                 boost::asio::transfer_at_least(1), boost::bind(
                         &Connection::handle_Read, // ＃1
-                        shared_from_this(), boost::asio::placeholders::error));
+                        shared_from_this(), boost::asio::placeholders::error,
+                        boost::asio::placeholders::bytes_transferred));
     }
     tcp::socket& getSocket(){
         return sock;
     }
 
 private:
-    void handle_Read(const boost::system::error_code& error){
+    void handle_Read(const boost::system::error_code& error,std::size_t bytes_transferred){
          if (!error) {
             cout << "recv from: " << sock.remote_endpoint().address() << ":" << sock.remote_endpoint().port() << endl;
+            cout << "接受到的数据："<< endl;
+            cout << strlen(msg_buff) <<endl;
         /*TODO 数据包验证函数*/
-            sock.async_write_some(boost::asio::buffer(buf),
+            msg_=make_daytime_string();
+            cout << "将要发送的数据"<<endl;
+            cout << msg_<< endl;
+
+            sock.async_write_some(boost::asio::buffer(msg_),
                     boost::bind(
                             &Connection::handle_Write, // ＃2
                             shared_from_this(),
@@ -58,11 +74,18 @@ private:
 
     void handle_Write(const boost::system::error_code& error){
         if (!error) {
-            memset(buf, 0, 512); // 注意：重置buff
-            sock.async_read_some(boost::asio::buffer(buf), boost::bind(
+            memset(msg_buff, 0, BUF_SIZE); // 注意：重置buff
+            sock.async_read_some(boost::asio::buffer(msg_buff,BUF_SIZE), boost::bind(
                     &Connection::handle_Read, // ＃3
-                    shared_from_this(), boost::asio::placeholders::error));
+                    shared_from_this(), boost::asio::placeholders::error,
+                    boost::asio::placeholders::bytes_transferred));
         }
+    }
+
+    std::string make_daytime_string()    //生成字符串的日期信息
+    {
+        time_t now = time(0);
+        return ctime(&now);
     }
 };
 
@@ -76,7 +99,7 @@ private:
 
 public:
     Server(boost::asio::io_service& service):
-    acceptor(service ,tcp::endpoint(tcp::v4(),9997)){
+    acceptor(service ,tcp::endpoint(tcp::v4(),9984)){
         start();
     }
 
