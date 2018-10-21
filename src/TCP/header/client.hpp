@@ -26,14 +26,14 @@ using namespace std;
 class TCP_Client
 {
   private:
-    char *msg_buff= (char *)malloc(1000 * sizeof(char));;
-    char *package=(char *)malloc(1400 * sizeof(char));;
+    char *msg_buff = (char *)malloc(1000 * sizeof(char));
+    ;
+    char *package = (char *)malloc(1400 * sizeof(char));
+    ;
     short *msg_length;
     tcp::socket sock;
-    //tcp::endpoint endpointIterator;
 
     void handle_connect(const boost::system::error_code &error, tcp::resolver::iterator endpointIterator);
-    //void rand_msg_buff(char **str, short *strlen);
     void handle_send(const boost::system::error_code &error);
     void handle_recive(const boost::system::error_code &error);
 
@@ -65,23 +65,7 @@ void TCP_Client::handle_connect(const boost::system::error_code &error, tcp::res
         sock.async_connect(endpoint, boost::bind(&TCP_Client::handle_connect, this, boost::asio::placeholders::error, ++endpointIterator));
     }
 }
-/*
-void TCP_Client::rand_msg_buff(char **str, short *strlen)
-{
-    int i;
-    int len;
-    srand((int)time(0)); // 设置种子，不然每次rand执行结果一样
-    len = rand() % 999;
-    *strlen = len;
-    char *p = *str;
-    srand((int)time(0));
-    for (i = 0; i < len; ++i)
-    {
-        p[i] = 'A' + rand() % 26;
-    }
-    p[i] = '\0';
-}
-*/
+
 void TCP_Client::handle_send(const boost::system::error_code &error)
 {
     if (!error)
@@ -120,8 +104,6 @@ void TCP_Client::handle_recive(const boost::system::error_code &error)
 TCP_Client::TCP_Client(boost::asio::io_context &service, tcp::resolver::iterator endpointIterator, char *msg_buff, char *package) : sock(service)
 {
 
-    //package = (char *)malloc(1400 * sizeof(char));
-  //  msg_buff = (char *)malloc(1000 * sizeof(char));
     tcp::endpoint endpoint = *endpointIterator;
     sock.async_connect(endpoint, boost::bind(&TCP_Client::handle_connect, this, boost::asio::placeholders::error, ++endpointIterator));
 }

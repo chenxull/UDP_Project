@@ -7,7 +7,6 @@
 using boost::asio::ip::tcp;
 using namespace std;
 
-
 int main()
 {
     try
@@ -21,7 +20,7 @@ int main()
         tcp::resolver::iterator iterator = resolver.resolve(query);
 
         TCP_Client *tcp_client;
-        tcp_client =  new TCP_Client(service,iterator,msg_buff,package);
+        tcp_client = new TCP_Client(service, iterator, msg_buff, package);
         service.run();
     }
     catch (std::exception &e)

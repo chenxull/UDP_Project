@@ -9,19 +9,18 @@ using namespace std;
 
 using boost::asio::ip::tcp;
 
-int main(){
-    
+int main()
+{
+
     try
     {
         boost::asio::io_context service;
         Server *server;
         server = new Server(service);
         service.run();
-
     }
-    catch(const std::exception& e)
+    catch (const std::exception &e)
     {
         std::cerr << e.what() << '\n';
     }
-    
 }
