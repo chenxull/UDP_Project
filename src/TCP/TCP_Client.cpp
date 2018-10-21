@@ -21,122 +21,117 @@
 using boost::asio::ip::tcp;
 using namespace std;
 
+class TCP_Client
+{
+  private:
+    char *msg_buff = (char *)malloc(1000 * sizeof(char));
+    char *package = (char *)malloc(1400 * sizeof(char));
+    short *msg_length=NULL;
+    tcp::socket sock;
+    
+    void handle_connect(const boost::system::error_code &error, tcp::resolver::iterator endpointIterator)
+    {
+        if (!error)
+        {
+            
+          
+            memset(package, 0, 1400);
+            memset(msg_buff, 0, 1000); // 注意：重置buf
 
+            
+            msg_length = (short *)package;
+            msg_buff = package+2;
+            rand_msg_buff(&msg_buff, msg_length);
+            
+            
+            cout << "将要发送的数据包：" << endl;
+            printf("%d %s\n", *(short *)package, package+2); //打印发送的数据包
+    
+            boost::asio::async_write(sock, boost::asio::buffer(package, strlen(package)), boost::bind(&TCP_Client::handle_send, this, boost::asio::placeholders::error));
+        }
+        else if (endpointIterator != tcp::resolver::iterator())
+        {
+            sock.close();
+            tcp::endpoint endpoint = *endpointIterator;
+            sock.async_connect(endpoint, boost::bind(&TCP_Client::handle_connect, this, boost::asio::placeholders::error, ++endpointIterator));
+        }
+    };
 
-class TCP_Client {
- private:
-
-char *msg_buff= (char *)malloc(1000 *sizeof(char));
-char *package =(char *)malloc(1400 * sizeof(char));;
-short msg_length;
-
-
-tcp::socket sock;
- enum {
-			BUF_SIZE = 1400
-		};
-char buf[BUF_SIZE];
-
- void handle_connect(const boost::system::error_code& error,tcp::resolver::iterator endpointIterator)
- {
-     if (!error) {
-				//memset(buf, 0, 1400);
-				//cin.getline(buf, BUF_SIZE);
-                memset(package,0,1400);
-                memset(msg_buff,0,1000); // 注意：重置buf
-
-                rand_msg_buff(msg_buff); 
-                //msg_length = sizeof(&msg_buff);
-                //memcpy(package,&msg_length,sizeof(short));
-                strcpy(&package[0],msg_buff);
-                
-                cout <<"将要发送的数据包："<<endl;
-                cout<< strlen(package)<<endl;
-			
-
-				boost::asio::async_write(sock,boost::asio::buffer(package, strlen(package)), boost::bind(&TCP_Client::handle_send,this,boost::asio::placeholders::error));
-			} else if (endpointIterator != tcp::resolver::iterator()) {
-				sock.close();
-				tcp::endpoint endpoint = *endpointIterator;
-				sock.async_connect(endpoint, boost::bind(&TCP_Client::handle_connect,this, boost::asio::placeholders::error, ++endpointIterator));
-			}
- };
-
-char *rand_msg_buff(char *str)
- {
+ void rand_msg_buff(char **str, short * strlen) {
     int i;
     int len;
-    len =rand()%999;
-    for(i=0;i<len;++i)
-        str[i]='A'+rand()%26;
-    
-    str[++i]='\\0';
-    return str;
+    srand((int)time(0)); // 设置种子，不然每次rand执行结果一样
+    len = rand() % 999;
+    *strlen = len;
+    char *p = *str;
+    srand((int)time(0));
+    for (i = 0; i < len; ++i){
+        p[i] = 'A' + rand() % 26;
+    } 
+    p[i] = '\0';
+}
+    void handle_send(const boost::system::error_code &error)
+    {
+        if (!error)
+        {
 
- }
+            
+            memset(package, 0, 1400);
+            sock.async_read_some(boost::asio::buffer(package, 1400), boost::bind(&TCP_Client::handle_recive, this, boost::asio::placeholders::error));
+        }
+    };
 
- void handle_send(const boost::system::error_code& error)
- {
-     if (!error) {
-         
-         //TODO 生成package函数
-            memset(package,0,BUF_SIZE);    
-			sock.async_read_some(boost::asio::buffer(package,1400),boost::bind(&TCP_Client::handle_recive, this,boost::asio::placeholders::error));
-			}
+    void handle_recive(const boost::system::error_code &error)
+    {
+        //TODO 根据返回的状态码，打印出不同信息
+        if (!error)
+        {
+            
+            cout << "recv from: " << sock.remote_endpoint().address() << ":" << sock.remote_endpoint().port() << endl;
+            cout << "接受到的数据：" << endl;
+            cout << package << endl; // print received message
+            memset(package, 0, 1400);
+            memset(msg_buff,0,1000);
 
- };
+            
 
- void handle_recive(const boost::system::error_code& error)
- {
-     //TODO 根据返回的状态码，打印出不同信息
-     if (!error) {
-                //cout << "1" <<endl;
-                cout << "recv from: " << sock.remote_endpoint().address() << ":" << sock.remote_endpoint().port() << endl;
-                cout << "接受到的数据：" << endl;
-				cout << package << endl; // print received message
-				memset(package, 0, 1400);
-				
-                rand_msg_buff(msg_buff); 
-                //msg_length = sizeof(&msg_buff);
-                //memcpy(package,&msg_length,sizeof(short));
-                strcpy(&package[0],msg_buff);
-                cout << "发送的数据："<<endl;
-                cout << package <<endl;
-				boost::asio::async_write(sock,boost::asio::buffer(package, strlen(package)), boost::bind(&TCP_Client::handle_send,this,boost::asio::placeholders::error));
-			}
- };
+            msg_length = (short *)package;
+            msg_buff = package+2;
+            rand_msg_buff(&msg_buff, msg_length);
+            
 
+            cout << "发送的数据：" << endl;
+           
+            printf("%d %s\n", *(short *)package, package+2); //打印发送的数据包
+            sleep(1);
+            boost::asio::async_write(sock, boost::asio::buffer(package, strlen(package)), boost::bind(&TCP_Client::handle_send, this, boost::asio::placeholders::error));
+        }
+    };
 
-
-
-
- public:
- TCP_Client(boost::asio::io_service& service,tcp::resolver::iterator endpointIterator): sock(service)
- {
-     tcp::endpoint endpoint = *endpointIterator;
-     sock.async_connect(endpoint,boost::bind(&TCP_Client::handle_connect,this,boost::asio::placeholders::error,++endpointIterator));
- }
-
+  public:
+    TCP_Client(boost::asio::io_context &service, tcp::resolver::iterator endpointIterator) : sock(service)
+    {
+        tcp::endpoint endpoint = *endpointIterator;
+        sock.async_connect(endpoint, boost::bind(&TCP_Client::handle_connect, this, boost::asio::placeholders::error, ++endpointIterator));
+    }
 };
 
-
-int main(){
-    try{
-        boost::asio::io_service service;
+int main()
+{
+    try
+    {
+        boost::asio::io_context service;
 
         tcp::resolver resolver(service);
-        tcp::resolver::query query("127.0.0.1","9984");
+        tcp::resolver::query query("127.0.0.1", "9989");
         tcp::resolver::iterator iterator = resolver.resolve(query);
 
-        TCP_Client TCP_Client(service,iterator);
+        TCP_Client TCP_Client(service, iterator);
         service.run();
-
-
-    }catch (std::exception& e){
+    }
+    catch (std::exception &e)
+    {
         std::cerr << "Exception: " << e.what() << "\n";
     }
     return 0;
-
 }
-
-

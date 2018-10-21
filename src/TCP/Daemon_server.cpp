@@ -38,7 +38,7 @@ private:
     string msg_;
     char *msg_buff = (char *)malloc(1400 * sizeof(char));
 public:
-    Connection(boost::asio::io_service& service): sock(service){
+    Connection(boost::asio::io_context& service): sock(service){
     }
 
      void start() {
@@ -58,7 +58,8 @@ private:
          if (!error) {
             cout << "recv from: " << sock.remote_endpoint().address() << ":" << sock.remote_endpoint().port() << endl;
             cout << "接受到的数据："<< endl;
-            cout << strlen(msg_buff) <<endl;
+            //cout << strlen(msg_buff) <<endl;
+            printf("%d %s\n", *(short *)msg_buff, msg_buff+2); //打印发送的数据包
         /*TODO 数据包验证函数*/
             msg_=make_daytime_string();
             cout << "将要发送的数据"<<endl;
@@ -82,7 +83,7 @@ private:
         }
     }
 
-    std::string make_daytime_string()    //生成字符串的日期信息
+    std::string make_daytime_string() //生成字符串的日期信息
     {
         time_t now = time(0);
         return ctime(&now);
@@ -98,14 +99,14 @@ private:
      tcp::acceptor acceptor;
 
 public:
-    Server(boost::asio::io_service& service):
-    acceptor(service ,tcp::endpoint(tcp::v4(),9984)){
+    Server(boost::asio::io_context& service):
+    acceptor(service ,tcp::endpoint(tcp::v4(),9989)){
         start();
     }
 
 private:
     void start(){
-        ConnectionPtr  conn(new Connection(acceptor.get_io_service()));
+        ConnectionPtr  conn(new Connection(acceptor.get_io_context()));
         acceptor.async_accept(conn->getSocket(),boost::bind(
                     &Server::handle_Accept,this,conn,
                     boost::asio::placeholders::error));
@@ -127,7 +128,7 @@ int main(){
     
     try
     {
-        boost::asio::io_service service;
+        boost::asio::io_context service;
         Server Server(service);
         service.run();
 
