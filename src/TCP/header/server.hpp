@@ -19,6 +19,7 @@ class Connection : public boost::enable_shared_from_this<Connection>
     char buf[BUF_SIZE];
     string msg_;
     char *msg_buff = (char *)malloc(1400 * sizeof(char));
+    char *msg_receive=(char *)malloc(1400 * sizeof(char));
 
     void handle_Read(const boost::system::error_code &error, std::size_t bytes_transferred);
     void handle_Write(const boost::system::error_code &error);
@@ -64,8 +65,11 @@ void Connection::handle_Read(const boost::system::error_code &error, std::size_t
     {
         cout << "recv from: " << sock.remote_endpoint().address() << ":" << sock.remote_endpoint().port() << endl;
         cout << "接受到的数据：" << endl;
-        printf("%d %s\n", *(short *)msg_buff, msg_buff + 2); //打印发送的数据包
-                                                             /*TODO 数据包验证函数*/
+         memcpy(msg_receive,msg_buff,BUF_SIZE);
+            //cout << strlen(msg_buff) <<endl;
+        printf("%d %s\n", *(short *)msg_receive, msg_receive + 2); //打印发送的数据包
+                                                                 /*TODO 数据包验证函数*/
+        memset(msg_receive,0,BUF_SIZE);
         msg_ = make_daytime_string();
         cout << "将要发送的数据" << endl;
         cout << msg_ << endl;
